@@ -32,7 +32,10 @@ func newPaxosInstance() *paxosInstance {
 }
 
 type paxosNode struct {
-	rpcMap        map[string]*rpc.Client
+	rpcMap           map[string]*rpc.Client
+	proposalNums     map[string]int
+	proposalNumsLock *sync.Mutex
+
 	proposals     map[string]*paxosInstance
 	proposalsLock *sync.Mutex
 
@@ -41,6 +44,7 @@ type paxosNode struct {
 
 	timeout  time.Duration
 	numNodes int
+	srvId    int
 }
 
 type rpcPair struct {
@@ -75,12 +79,15 @@ func tryDial(hostport string, numRetries int, res chan rpcPair) {
 // is a replacement for a node which failed.
 func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool) (PaxosNode, error) {
 	pn := &paxosNode{
-		proposals:     make(map[string]*paxosInstance),
-		proposalsLock: &sync.Mutex{},
-		commits:       make(map[string]interface{}),
-		commitsLock:   &sync.Mutex{},
-		timeout:       time.Second * time.Duration(15),
-		numNodes:      numNodes,
+		proposalNums:     make(map[string]int),
+		proposalNumsLock: &sync.Mutex{},
+		proposals:        make(map[string]*paxosInstance),
+		proposalsLock:    &sync.Mutex{},
+		commits:          make(map[string]interface{}),
+		commitsLock:      &sync.Mutex{},
+		timeout:          time.Second * time.Duration(15),
+		numNodes:         numNodes,
+		srvId:            srvId,
 	}
 
 	listener, err := net.Listen("tcp", myHostPort)
@@ -117,58 +124,66 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 }
 
 func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, reply *paxosrpc.ProposalNumberReply) error {
-	pn.proposalsLock.Lock()
-	defer pn.proposalsLock.Unlock()
+	pn.proposalNumsLock.Lock()
+	defer pn.proposalNumsLock.Unlock()
 
-	if _, ok := pn.proposals[args.Key]; !ok {
-		pn.proposals[args.Key] = newPaxosInstance()
+	if _, ok := pn.proposalNums[args.Key]; !ok {
+		pn.proposalNums[args.Key] = 0
 	}
-	reply.N = pn.proposals[args.Key].n_h + 1
+	reply.N = (pn.proposalNums[args.Key]/pn.numNodes+1)*pn.numNodes + pn.srvId
 	return nil
 }
 
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
-	preplies := make(chan *paxosrpc.PrepareReply, pn.numNodes)
+	// preplies := make(chan *paxosrpc.PrepareReply, pn.numNodes)
 	pargs := paxosrpc.PrepareArgs{
 		Key: args.Key,
 		N:   args.N,
-	}
-	for _, cli := range pn.rpcMap {
-		go func() {
-			var preply paxosrpc.PrepareReply
-			err := cli.Call("PaxosNode.RecvPrepare", &pargs, &preply)
-			if err != nil {
-				// wut, node fail?
-				preplies <- nil
-				return
-			}
-			preplies <- &preply
-		}()
 	}
 
 	oks := 0
 	max_n := 0
 	var V interface{}
-	timeout := time.After(pn.timeout)
-	for i := 0; i < pn.numNodes; i++ {
-		select {
-		case <-timeout:
-			// fail by timeout
-			// *reply = paxosrpc.ProposeReply{
-			// Status: paxosrpc.Reject,
-			// }
-			return errors.New("prepare timeout")
-		case preply := <-preplies:
-			if preply == nil || preply.Status != paxosrpc.OK {
-				continue
-			}
-			oks += 1
-			if preply.N_a > max_n {
-				max_n = preply.N_a
-				V = preply.V_a
-			}
+	for _, cli := range pn.rpcMap {
+		// go func() {
+		var preply paxosrpc.PrepareReply
+		err := cli.Call("PaxosNode.RecvPrepare", &pargs, &preply)
+		if err != nil {
+			continue
 		}
+		if preply.Status != paxosrpc.OK {
+			continue
+		}
+		oks += 1
+		if preply.N_a > max_n {
+			max_n = preply.N_a
+			V = preply.V_a
+		}
+		// }
+		// preplies <- &preply
+		// }()
 	}
+
+	// timeout := time.After(pn.timeout)
+	// for i := 0; i < pn.numNodes; i++ {
+	// 	select {
+	// 	case <-timeout:
+	// 		// fail by timeout
+	// 		// *reply = paxosrpc.ProposeReply{
+	// 		// Status: paxosrpc.Reject,
+	// 		// }
+	// 		return errors.New("prepare timeout")
+	// 	case preply := <-preplies:
+	// 		if preply == nil || preply.Status != paxosrpc.OK {
+	// 			continue
+	// 		}
+	// 		oks += 1
+	// 		if preply.N_a > max_n {
+	// 			max_n = preply.N_a
+	// 			V = preply.V_a
+	// 		}
+	// 	}
+	// }
 
 	paxos, _ := pn.proposals[args.Key]
 
@@ -185,38 +200,43 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	if max_n == 0 {
 		V = args.V
 	}
-	areplies := make(chan *paxosrpc.AcceptReply, pn.numNodes)
+	// areplies := make(chan *paxosrpc.AcceptReply, pn.numNodes)
 	aargs := paxosrpc.AcceptArgs{
 		Key: args.Key,
 		N:   args.N,
 		V:   V,
 	}
+	oks = 0
 	for _, cli := range pn.rpcMap {
-		go func() {
-			var areply paxosrpc.AcceptReply
-			err := cli.Call("PaxosNode.RecvAccept", &aargs, &areply)
-			if err != nil {
-				// node fail, rip
-				areplies <- nil
-				return
-			}
-			areplies <- &areply
-		}()
+		// go func() {
+		var areply paxosrpc.AcceptReply
+		err := cli.Call("PaxosNode.RecvAccept", &aargs, &areply)
+		if err != nil {
+			// node fail, rip
+			// areplies <- nil
+			continue
+			// return
+		}
+		if areply.Status != paxosrpc.OK {
+			continue
+		}
+		oks += 1
+		// areplies <- &areply
+		// }()
 	}
 
-	oks = 0
-	timeout = time.After(pn.timeout)
-	for i := 0; i < pn.numNodes; i++ {
-		select {
-		case <-timeout:
-			return errors.New("accept timeout")
-		case areply := <-areplies:
-			if areply == nil || areply.Status != paxosrpc.OK {
-				continue
-			}
-			oks += 1
-		}
-	}
+	// timeout = time.After(pn.timeout)
+	// for i := 0; i < pn.numNodes; i++ {
+	// 	select {
+	// 	case <-timeout:
+	// 		return errors.New("accept timeout")
+	// 	case areply := <-areplies:
+	// 		if areply == nil || areply.Status != paxosrpc.OK {
+	// 			continue
+	// 		}
+	// 		oks += 1
+	// 	}
+	// }
 
 	if oks < pn.numNodes/2+1 {
 		// wait for commit..
@@ -271,6 +291,8 @@ func (pn *paxosNode) GetValue(args *paxosrpc.GetValueArgs, reply *paxosrpc.GetVa
 func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.PrepareReply) error {
 	pn.proposalsLock.Lock()
 	defer pn.proposalsLock.Unlock()
+	pn.proposalNumsLock.Lock()
+	defer pn.proposalNumsLock.Unlock()
 
 	if _, ok := pn.proposals[args.Key]; !ok {
 		pn.proposals[args.Key] = newPaxosInstance()
@@ -284,6 +306,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 		}
 	} else {
 		// prepare accept
+		pn.proposalNums[args.Key] = args.N
 		paxos.n_h = args.N
 		*reply = paxosrpc.PrepareReply{
 			Status: paxosrpc.OK,
@@ -298,6 +321,8 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.AcceptReply) error {
 	pn.proposalsLock.Lock()
 	defer pn.proposalsLock.Unlock()
+	pn.proposalNumsLock.Lock()
+	defer pn.proposalNumsLock.Unlock()
 
 	if _, ok := pn.proposals[args.Key]; !ok {
 		pn.proposals[args.Key] = newPaxosInstance()
@@ -314,6 +339,8 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 		paxos.n_h = args.N
 		paxos.v_a = args.V
 		paxos.n_a = args.N
+		pn.proposalNums[args.Key] = args.N
+
 		*reply = paxosrpc.AcceptReply{
 			Status: paxosrpc.OK,
 		}
@@ -323,20 +350,21 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 }
 
 func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.CommitReply) error {
-	pn.proposalsLock.Lock()
+	// pn.proposalsLock.Lock()
 
-	if _, ok := pn.proposals[args.Key]; !ok {
-		pn.proposals[args.Key] = newPaxosInstance()
-	}
-	paxos, _ := pn.proposals[args.Key]
-	pn.proposalsLock.Unlock()
+	// if _, ok := pn.proposals[args.Key]; !ok {
+	// 	pn.proposals[args.Key] = newPaxosInstance()
+	// }
+	// paxos, _ := pn.proposals[args.Key]
+	// pn.proposalsLock.Unlock()
 
 	pn.commitsLock.Lock()
 	pn.commits[args.Key] = args.V
 	pn.commitsLock.Unlock()
 
 	pn.proposalsLock.Lock()
-	paxos.V <- args.V
+	// paxos.V <- args.V
+	delete(pn.proposals, args.Key)
 	pn.proposalsLock.Unlock()
 	return nil
 }
