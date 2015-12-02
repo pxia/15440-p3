@@ -50,22 +50,22 @@ type rpcPair struct {
 	client *rpc.Client
 }
 
-func tryDial(hostport string, numRetries, id int, res chan rpcPair) {
+func tryDial(hostport string, numRetries int) *rpc.Client {
 	for i := 0; i < numRetries; i++ {
 		if cli, err := rpc.DialHTTP("tcp", hostport); err == nil {
-			res <- rpcPair{
-				id:     id,
-				client: cli,
-			}
-			return
+			// res <- rpcPair{
+			// 	id:     id,
+			// 	client: cli,
+			// }
+			return cli
 		}
 		time.Sleep(time.Second)
 	}
-	res <- rpcPair{
-		id:     id,
-		client: nil,
-	}
-	return
+	// res <- rpcPair{
+	// 	id:     id,
+	// 	client: nil,
+	// }
+	return nil
 }
 
 // NewPaxosNode creates a new PaxosNode. This function should return only when
@@ -105,7 +105,12 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 
 	rpcClients := make(chan rpcPair, numNodes)
 	for id, hostport := range hostMap {
-		go tryDial(hostport, numRetries, id, rpcClients)
+		go func(id_ int, hostport_ string) {
+			rpcClients <- rpcPair{
+				id:     id_,
+				client: tryDial(hostport_, numRetries),
+			}
+		}(id, hostport)
 	}
 
 	rpcMap := make(map[int]*rpc.Client)
@@ -358,6 +363,7 @@ func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.Commi
 }
 
 func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *paxosrpc.ReplaceServerReply) error {
+
 	return errors.New("not implemented")
 }
 
