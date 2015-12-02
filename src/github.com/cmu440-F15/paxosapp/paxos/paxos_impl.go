@@ -29,7 +29,7 @@ func newPaxosInstance() *paxosInstance {
 }
 
 type paxosNode struct {
-	rpcMap           map[string]*rpc.Client
+	rpcMap           map[int]*rpc.Client
 	proposalNums     map[string]int
 	proposalNumsLock *sync.Mutex
 
@@ -45,24 +45,24 @@ type paxosNode struct {
 }
 
 type rpcPair struct {
-	hostport string
-	client   *rpc.Client
+	id     int
+	client *rpc.Client
 }
 
-func tryDial(hostport string, numRetries int, res chan rpcPair) {
+func tryDial(hostport string, numRetries, id int, res chan rpcPair) {
 	for i := 0; i < numRetries; i++ {
 		if cli, err := rpc.DialHTTP("tcp", hostport); err == nil {
 			res <- rpcPair{
-				hostport: hostport,
-				client:   cli,
+				id:     id,
+				client: cli,
 			}
 			return
 		}
 		time.Sleep(time.Second)
 	}
 	res <- rpcPair{
-		hostport: hostport,
-		client:   nil,
+		id:     id,
+		client: nil,
 	}
 	return
 }
@@ -102,17 +102,17 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 	go http.Serve(listener, nil)
 
 	rpcClients := make(chan rpcPair, numNodes)
-	for _, hostport := range hostMap {
-		go tryDial(hostport, numRetries, rpcClients)
+	for id, hostport := range hostMap {
+		go tryDial(hostport, numRetries, id, rpcClients)
 	}
 
-	rpcMap := make(map[string]*rpc.Client)
+	rpcMap := make(map[int]*rpc.Client)
 	for i := 0; i < numNodes; i++ {
 		c := <-rpcClients
 		if c.client == nil {
 			return nil, errors.New("Cannot connect to all nodes")
 		}
-		rpcMap[c.hostport] = c.client
+		rpcMap[c.id] = c.client
 	}
 
 	pn.rpcMap = rpcMap
@@ -344,7 +344,6 @@ func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.Commi
 	pn.commitsLock.Unlock()
 
 	pn.proposalsLock.Lock()
-	// paxos.V <- args.V
 	delete(pn.proposals, args.Key)
 	pn.proposalsLock.Unlock()
 	return nil
