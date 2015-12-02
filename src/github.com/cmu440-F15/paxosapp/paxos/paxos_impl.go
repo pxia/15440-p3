@@ -11,9 +11,6 @@ import (
 )
 
 type paxosInstance struct {
-	// necessary?
-	// proposalNumber int
-
 	lock *sync.Mutex
 	n_a  int
 	n_h  int
@@ -135,7 +132,7 @@ func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, re
 }
 
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
-	// preplies := make(chan *paxosrpc.PrepareReply, pn.numNodes)
+	preplies := make(chan *paxosrpc.PrepareReply, pn.numNodes)
 	pargs := paxosrpc.PrepareArgs{
 		Key: args.Key,
 		N:   args.N,
@@ -145,45 +142,36 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	max_n := 0
 	var V interface{}
 	for _, cli := range pn.rpcMap {
-		// go func() {
-		var preply paxosrpc.PrepareReply
-		err := cli.Call("PaxosNode.RecvPrepare", &pargs, &preply)
-		if err != nil {
-			continue
-		}
-		if preply.Status != paxosrpc.OK {
-			continue
-		}
-		oks += 1
-		if preply.N_a > max_n {
-			max_n = preply.N_a
-			V = preply.V_a
-		}
-		// }
-		// preplies <- &preply
-		// }()
+		// rpclock := &sync.Mutex{}
+		go func(c *rpc.Client) {
+			var preply paxosrpc.PrepareReply
+			// rpclock.Lock()
+			err := c.Call("PaxosNode.RecvPrepare", &pargs, &preply)
+			// rpclock.Unlock()
+			if err != nil {
+				preplies <- nil
+			} else {
+				preplies <- &preply
+			}
+		}(cli)
 	}
 
-	// timeout := time.After(pn.timeout)
-	// for i := 0; i < pn.numNodes; i++ {
-	// 	select {
-	// 	case <-timeout:
-	// 		// fail by timeout
-	// 		// *reply = paxosrpc.ProposeReply{
-	// 		// Status: paxosrpc.Reject,
-	// 		// }
-	// 		return errors.New("prepare timeout")
-	// 	case preply := <-preplies:
-	// 		if preply == nil || preply.Status != paxosrpc.OK {
-	// 			continue
-	// 		}
-	// 		oks += 1
-	// 		if preply.N_a > max_n {
-	// 			max_n = preply.N_a
-	// 			V = preply.V_a
-	// 		}
-	// 	}
-	// }
+	timeout := time.After(pn.timeout)
+	for i := 0; i < pn.numNodes; i++ {
+		select {
+		case preply := <-preplies:
+			if preply == nil || preply.Status != paxosrpc.OK {
+				continue
+			}
+			oks += 1
+			if preply.N_a > max_n {
+				max_n = preply.N_a
+				V = preply.V_a
+			}
+		case <-timeout:
+			return errors.New("prepare timeout")
+		}
+	}
 
 	paxos, _ := pn.proposals[args.Key]
 
@@ -200,7 +188,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	if max_n == 0 {
 		V = args.V
 	}
-	// areplies := make(chan *paxosrpc.AcceptReply, pn.numNodes)
+	areplies := make(chan *paxosrpc.AcceptReply, pn.numNodes)
 	aargs := paxosrpc.AcceptArgs{
 		Key: args.Key,
 		N:   args.N,
@@ -208,35 +196,30 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 	oks = 0
 	for _, cli := range pn.rpcMap {
-		// go func() {
-		var areply paxosrpc.AcceptReply
-		err := cli.Call("PaxosNode.RecvAccept", &aargs, &areply)
-		if err != nil {
-			// node fail, rip
-			// areplies <- nil
-			continue
-			// return
-		}
-		if areply.Status != paxosrpc.OK {
-			continue
-		}
-		oks += 1
-		// areplies <- &areply
-		// }()
+		go func(c *rpc.Client) {
+			var areply paxosrpc.AcceptReply
+			err := c.Call("PaxosNode.RecvAccept", &aargs, &areply)
+			if err != nil {
+				// node fail, rip
+				areplies <- nil
+			} else {
+				areplies <- &areply
+			}
+		}(cli)
 	}
 
-	// timeout = time.After(pn.timeout)
-	// for i := 0; i < pn.numNodes; i++ {
-	// 	select {
-	// 	case <-timeout:
-	// 		return errors.New("accept timeout")
-	// 	case areply := <-areplies:
-	// 		if areply == nil || areply.Status != paxosrpc.OK {
-	// 			continue
-	// 		}
-	// 		oks += 1
-	// 	}
-	// }
+	timeout = time.After(pn.timeout)
+	for i := 0; i < pn.numNodes; i++ {
+		select {
+		case areply := <-areplies:
+			if areply == nil || areply.Status != paxosrpc.OK {
+				continue
+			}
+			oks += 1
+		case <-timeout:
+			return errors.New("accept timeout")
+		}
+	}
 
 	if oks < pn.numNodes/2+1 {
 		// wait for commit..
@@ -252,21 +235,27 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		V:   V,
 	}
 
-	// finish := make(chan bool, pn.numNodes)
+	finish := make(chan bool, pn.numNodes)
 	for _, cli := range pn.rpcMap {
-		// go func() {
-		var creply paxosrpc.CommitReply
-		cli.Call("PaxosNode.RecvCommit", &cargs, &creply)
-		// finish <- false
-		// }()
+		go func(c *rpc.Client) {
+			var creply paxosrpc.CommitReply
+			c.Call("PaxosNode.RecvCommit", &cargs, &creply)
+			finish <- false
+		}(cli)
+	}
+
+	timeout = time.After(pn.timeout)
+	for i := 0; i < pn.numNodes; i++ {
+		select {
+		case <-finish:
+		case <-timeout:
+			return errors.New("commit timeout")
+		}
 	}
 
 	*reply = paxosrpc.ProposeReply{
 		V: V,
 	}
-	// for i := 0; i < pn.numNodes; i++ {
-	// <-finish
-	// }
 	return nil
 }
 
@@ -350,14 +339,6 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 }
 
 func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.CommitReply) error {
-	// pn.proposalsLock.Lock()
-
-	// if _, ok := pn.proposals[args.Key]; !ok {
-	// 	pn.proposals[args.Key] = newPaxosInstance()
-	// }
-	// paxos, _ := pn.proposals[args.Key]
-	// pn.proposalsLock.Unlock()
-
 	pn.commitsLock.Lock()
 	pn.commits[args.Key] = args.V
 	pn.commitsLock.Unlock()
