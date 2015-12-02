@@ -29,6 +29,7 @@ func newPaxosInstance() *paxosInstance {
 }
 
 type paxosNode struct {
+	rpcMapLock       *sync.RWMutex
 	rpcMap           map[int]*rpc.Client
 	proposalNums     map[string]int
 	proposalNumsLock *sync.Mutex
@@ -76,6 +77,7 @@ func tryDial(hostport string, numRetries, id int, res chan rpcPair) {
 // is a replacement for a node which failed.
 func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool) (PaxosNode, error) {
 	pn := &paxosNode{
+		rpcMapLock:       &sync.RWMutex{},
 		proposalNums:     make(map[string]int),
 		proposalNumsLock: &sync.Mutex{},
 		proposals:        make(map[string]*paxosInstance),
@@ -141,6 +143,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	oks := 0
 	max_n := 0
 	var V interface{}
+	pn.rpcMapLock.RLock()
 	for _, cli := range pn.rpcMap {
 		// rpclock := &sync.Mutex{}
 		go func(c *rpc.Client) {
@@ -155,6 +158,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 			}
 		}(cli)
 	}
+	pn.rpcMapLock.RUnlock()
 
 	timeout := time.After(pn.timeout)
 	for i := 0; i < pn.numNodes; i++ {
@@ -195,6 +199,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		V:   V,
 	}
 	oks = 0
+	pn.rpcMapLock.RLock()
 	for _, cli := range pn.rpcMap {
 		go func(c *rpc.Client) {
 			var areply paxosrpc.AcceptReply
@@ -207,6 +212,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 			}
 		}(cli)
 	}
+	pn.rpcMapLock.RUnlock()
 
 	timeout = time.After(pn.timeout)
 	for i := 0; i < pn.numNodes; i++ {
@@ -236,6 +242,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 
 	finish := make(chan bool, pn.numNodes)
+	pn.rpcMapLock.RLock()
 	for _, cli := range pn.rpcMap {
 		go func(c *rpc.Client) {
 			var creply paxosrpc.CommitReply
@@ -243,6 +250,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 			finish <- false
 		}(cli)
 	}
+	pn.rpcMapLock.RUnlock()
 
 	timeout = time.After(pn.timeout)
 	for i := 0; i < pn.numNodes; i++ {
