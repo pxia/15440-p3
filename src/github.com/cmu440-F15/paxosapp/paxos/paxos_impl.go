@@ -11,20 +11,16 @@ import (
 )
 
 type paxosInstance struct {
-	lock *sync.Mutex
-	n_a  int
-	n_h  int
-	v_a  interface{}
-	V    chan interface{}
+	n_a int
+	n_h int
+	v_a interface{}
 }
 
 func newPaxosInstance() *paxosInstance {
 	return &paxosInstance{
-		lock: &sync.Mutex{},
-		n_a:  0,
-		n_h:  0,
-		v_a:  nil,
-		V:    make(chan interface{}, 100),
+		n_a: -1,
+		n_h: -1,
+		v_a: nil,
 	}
 }
 
