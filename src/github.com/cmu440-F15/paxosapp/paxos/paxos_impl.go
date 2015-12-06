@@ -52,18 +52,10 @@ type rpcPair struct {
 func tryDial(hostport string, numRetries int) *rpc.Client {
 	for i := 0; i < numRetries; i++ {
 		if cli, err := rpc.DialHTTP("tcp", hostport); err == nil {
-			// res <- rpcPair{
-			// 	id:     id,
-			// 	client: cli,
-			// }
 			return cli
 		}
 		time.Sleep(time.Second)
 	}
-	// res <- rpcPair{
-	// 	id:     id,
-	// 	client: nil,
-	// }
 	return nil
 }
 
@@ -193,8 +185,6 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 			return errors.New("prepare timeout")
 		}
 	}
-
-	paxos, _ := pn.proposals[args.Key]
 
 	if oks < pn.numNodes/2+1 {
 		// rip
