@@ -1,6 +1,7 @@
 package paxos
 
 import (
+	"encoding/json"
 	"errors"
 	"github.com/cmu440-F15/paxosapp/rpc/paxosrpc"
 	"net"
@@ -117,7 +118,69 @@ func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, nu
 
 	pn.rpcMap = rpcMap
 
+	if replace {
+		pn.DoCatchup(myHostPort)
+	}
+
 	return pn, nil
+}
+
+type ketchup struct {
+	ProposalNums *map[string]int
+	Commits      *map[string]interface{}
+}
+
+func (pn *paxosNode) DoCatchup(myHostPort string) {
+	rargs := paxosrpc.ReplaceServerArgs{
+		SrvID:    pn.srvId,
+		Hostport: myHostPort,
+	}
+	finish := make(chan bool, pn.numNodes-1)
+
+	pn.rpcMapLock.RLock()
+	for srvId, cli := range pn.rpcMap {
+		if srvId == pn.srvId {
+			// don't talk to yourself, it's weird
+			continue
+		}
+
+		go func(c *rpc.Client) {
+			rreply := paxosrpc.ReplaceServerReply{}
+			c.Call("PaxosNode.RecvReplaceServer", &rargs, &rreply)
+			// no error handling whatsoever
+			finish <- false
+		}(cli)
+	}
+	pn.rpcMapLock.RUnlock()
+
+	for i := 0; i < pn.numNodes-1; i++ {
+		<-finish
+	}
+
+	cargs := paxosrpc.ReplaceCatchupArgs{}
+	creply := paxosrpc.ReplaceCatchupReply{}
+	pn.rpcMapLock.RLock()
+	for srvId, cli := range pn.rpcMap {
+		if srvId == pn.srvId {
+			continue
+		}
+
+		if err := cli.Call("PaxosNode.RecvReplaceCatchup", &cargs, &creply); err != nil {
+			continue
+		}
+
+		break
+	}
+	pn.rpcMapLock.RUnlock()
+
+	sauce := ketchup{}
+	if err := json.Unmarshal(creply.Data, &sauce); err != nil {
+		return
+	}
+
+	pn.commits = *sauce.Commits
+	pn.proposalNums = *sauce.ProposalNums
+
 }
 
 func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, reply *paxosrpc.ProposalNumberReply) error {
@@ -371,10 +434,33 @@ func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.Commi
 }
 
 func (pn *paxosNode) RecvReplaceServer(args *paxosrpc.ReplaceServerArgs, reply *paxosrpc.ReplaceServerReply) error {
-
-	return errors.New("not implemented")
+	cli := tryDial(args.Hostport, 1)
+	if cli == nil {
+		return errors.New("cannot dial replacing client")
+	}
+	pn.rpcMapLock.Lock()
+	pn.rpcMap[args.SrvID] = cli
+	pn.rpcMapLock.Unlock()
+	return nil
 }
 
 func (pn *paxosNode) RecvReplaceCatchup(args *paxosrpc.ReplaceCatchupArgs, reply *paxosrpc.ReplaceCatchupReply) error {
-	return errors.New("not implemented")
+	pn.commitsLock.Lock()
+	defer pn.commitsLock.Unlock()
+	pn.proposalNumsLock.Lock()
+	defer pn.proposalNumsLock.Unlock()
+
+	sauce := ketchup{
+		ProposalNums: &pn.proposalNums,
+		Commits:      &pn.commits,
+	}
+	if bytes, err := json.Marshal(&sauce); err != nil {
+		return err
+	} else {
+		*reply = paxosrpc.ReplaceCatchupReply{
+			Data: bytes,
+		}
+		return nil
+	}
+
 }
