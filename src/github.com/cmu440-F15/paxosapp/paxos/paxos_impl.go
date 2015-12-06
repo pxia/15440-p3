@@ -25,6 +25,9 @@ func newPaxosInstance() *paxosInstance {
 }
 
 type paxosNode struct {
+	commitingVals     map[string]chan interface{}
+	commitingValsLock *sync.Mutex
+
 	rpcMapLock       *sync.RWMutex
 	rpcMap           map[int]*rpc.Client
 	proposalNums     map[string]int
@@ -73,16 +76,18 @@ func tryDial(hostport string, numRetries int) *rpc.Client {
 // is a replacement for a node which failed.
 func NewPaxosNode(myHostPort string, hostMap map[int]string, numNodes, srvId, numRetries int, replace bool) (PaxosNode, error) {
 	pn := &paxosNode{
-		rpcMapLock:       &sync.RWMutex{},
-		proposalNums:     make(map[string]int),
-		proposalNumsLock: &sync.Mutex{},
-		proposals:        make(map[string]*paxosInstance),
-		proposalsLock:    &sync.Mutex{},
-		commits:          make(map[string]interface{}),
-		commitsLock:      &sync.Mutex{},
-		timeout:          time.Second * time.Duration(15),
-		numNodes:         numNodes,
-		srvId:            srvId,
+		commitingVals:     make(map[string]chan interface{}),
+		commitingValsLock: &sync.Mutex{},
+		rpcMapLock:        &sync.RWMutex{},
+		proposalNums:      make(map[string]int),
+		proposalNumsLock:  &sync.Mutex{},
+		proposals:         make(map[string]*paxosInstance),
+		proposalsLock:     &sync.Mutex{},
+		commits:           make(map[string]interface{}),
+		commitsLock:       &sync.Mutex{},
+		timeout:           time.Second * time.Duration(15),
+		numNodes:          numNodes,
+		srvId:             srvId,
 	}
 
 	listener, err := net.Listen("tcp", myHostPort)
@@ -135,6 +140,17 @@ func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, re
 }
 
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
+	pn.commitingValsLock.Lock()
+	pn.commitingVals[args.Key] = make(chan interface{}, 1)
+	pn.commitingValsLock.Unlock()
+
+	defer func() {
+		pn.commitingValsLock.Lock()
+		delete(pn.commitingVals, args.Key)
+		pn.commitingValsLock.Unlock()
+	}()
+
+	// prepare
 	preplies := make(chan *paxosrpc.PrepareReply, pn.numNodes)
 	pargs := paxosrpc.PrepareArgs{
 		Key: args.Key,
@@ -184,7 +200,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 		// rip
 		// wait for commit from others
 		*reply = paxosrpc.ProposeReply{
-			V: <-paxos.V,
+			V: <-pn.commitingVals[args.Key],
 		}
 		return nil
 	}
@@ -231,7 +247,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	if oks < pn.numNodes/2+1 {
 		// wait for commit..
 		*reply = paxosrpc.ProposeReply{
-			V: <-paxos.V,
+			V: <-pn.commitingVals[args.Key],
 		}
 		return nil
 	}
@@ -263,7 +279,7 @@ func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.Propose
 	}
 
 	*reply = paxosrpc.ProposeReply{
-		V: V,
+		V: <-pn.commitingVals[args.Key],
 	}
 	return nil
 }
@@ -348,13 +364,19 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 }
 
 func (pn *paxosNode) RecvCommit(args *paxosrpc.CommitArgs, reply *paxosrpc.CommitReply) error {
+	pn.proposalsLock.Lock()
+	delete(pn.proposals, args.Key)
+	pn.proposalsLock.Unlock()
+
 	pn.commitsLock.Lock()
 	pn.commits[args.Key] = args.V
 	pn.commitsLock.Unlock()
 
-	pn.proposalsLock.Lock()
-	delete(pn.proposals, args.Key)
-	pn.proposalsLock.Unlock()
+	pn.commitingValsLock.Lock()
+	if ch, ok := pn.commitingVals[args.Key]; ok {
+		ch <- args.V
+	}
+	pn.commitingValsLock.Unlock()
 	return nil
 }
 
