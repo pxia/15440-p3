@@ -303,7 +303,7 @@ func (pn *paxosNode) RecvPrepare(args *paxosrpc.PrepareArgs, reply *paxosrpc.Pre
 	}
 	paxos, _ := pn.proposals[args.Key]
 
-	if paxos.n_h > 0 && paxos.n_h > args.N {
+	if paxos.n_h >= 0 && paxos.n_h > args.N {
 		// prepare reject
 		*reply = paxosrpc.PrepareReply{
 			Status: paxosrpc.Reject,
@@ -333,7 +333,7 @@ func (pn *paxosNode) RecvAccept(args *paxosrpc.AcceptArgs, reply *paxosrpc.Accep
 	}
 	paxos, _ := pn.proposals[args.Key]
 
-	if paxos.n_h > 0 && paxos.n_h > args.N {
+	if paxos.n_h >= 0 && paxos.n_h > args.N {
 		// accept reject
 		*reply = paxosrpc.AcceptReply{
 			Status: paxosrpc.Reject,
