@@ -1,4 +1,5 @@
 (function() {
-    console.log('hello')
-    $('#abc').text('goodbye')
+    $("#bu").click(function(event) {
+        $(".row0").toggle()
+    });
 })()

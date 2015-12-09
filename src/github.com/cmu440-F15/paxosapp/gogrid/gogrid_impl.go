@@ -12,9 +12,9 @@ var (
 	staticDir = flag.String("static", "", "directory to static files")
 )
 
-// func handler(w http.ResponseWriter, r *http.Request) {
-// fmt.Fprintf(w, "%s\n", r.URL.Path)
-// }
+func handler(w http.ResponseWriter, r *http.Request) {
+	fmt.Fprintf(w, "api")
+}
 
 func main() {
 	flag.Parse()
@@ -24,6 +24,7 @@ func main() {
 	}
 
 	fs := http.FileServer(http.Dir(*staticDir))
+	http.HandleFunc("/api", handler)
 	http.Handle("/", fs)
 	// http.HandleFunc("/", handler)
 	http.ListenAndServe(":10086", nil)
