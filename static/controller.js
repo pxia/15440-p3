@@ -1,4 +1,36 @@
 (function() {
+
+    var load = $(document).on("pageload", update())
+
+    $("#bu1").click(function(event) {
+
+        $.get('/api/data', function(data) {
+            var j = JSON.parse(data)
+            var cellInput = j.Data
+            $(".ginput").each(function() {
+                var cell = $(this)
+
+                cell.val(cellInput[cell.attr("grow")][cell.attr("gcol")])
+            })
+        })
+
+    })
+
+    var timer = setInterval(update, 2000)
+
+    function update() {
+        $.get('/api/data', function(data) {
+            var j = JSON.parse(data)
+            var cellInput = j.Data
+            $(".ginput").each(function() {
+                var cell = $(this)
+                if (!cell.is(":focus")) {
+                    cell.val(cellInput[cell.attr("grow")][cell.attr("gcol")])
+                }
+            })
+        })
+    }
+
     if (!String.format) {
         String.format = function(format) {
             var args = Array.prototype.slice.call(arguments, 1);
@@ -28,5 +60,6 @@
             console.log(String.format("blur on row:{0},col:{1}", cell.attr("grow"), cell.attr("gcol")));
         })
     })
+
 
 })()
