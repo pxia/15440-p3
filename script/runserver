@@ -15,4 +15,9 @@ else
 fi
 
 go install github.com/cmu440-F15/paxosapp/gogrid
+if [ $? -ne 0 ]; then
+   echo "FAIL: code does not compile"
+   exit $?
+fi
+
 $GOPATH/bin/gogrid -static $GOPATH/static

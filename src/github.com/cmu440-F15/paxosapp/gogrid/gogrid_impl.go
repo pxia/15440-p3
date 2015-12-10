@@ -25,11 +25,12 @@ type gridData struct {
 func handler(w http.ResponseWriter, r *http.Request) {
 	// fmt.Fprintf(w, r.URL.Path)
 	grid := gridData{
-		Rows: 2,
+		Rows: 3,
 		Cols: 3,
 		Data: [][]string{
 			[]string{"a", "b", "c"},
 			[]string{"d", "e", "f"},
+			[]string{"f", "g", "h"},
 		},
 	}
 	json.NewEncoder(w).Encode(&grid)
