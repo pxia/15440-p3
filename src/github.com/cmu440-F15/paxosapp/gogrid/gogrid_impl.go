@@ -4,16 +4,35 @@ import (
 	"fmt"
 	// "github.com/cmu440-F15/paxosapp/paxos"
 	// "net"
+	"encoding/json"
 	"flag"
 	"net/http"
+	"strconv"
 )
 
 var (
-	staticDir = flag.String("static", "", "directory to static files")
+	staticDir  = flag.String("static", "", "directory to static files")
+	serverPort = flag.Uint("port", 10086, "port to to access the web app")
+	paxoPort   = flag.Uint("paxoport", 10087, "port to communicate with other nodes")
 )
 
+type gridData struct {
+	Rows int
+	Cols int
+	Data [][]string
+}
+
 func handler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "api")
+	// fmt.Fprintf(w, r.URL.Path)
+	grid := gridData{
+		Rows: 2,
+		Cols: 3,
+		Data: [][]string{
+			[]string{"a", "b", "c"},
+			[]string{"d", "e", "f"},
+		},
+	}
+	json.NewEncoder(w).Encode(&grid)
 }
 
 func main() {
@@ -23,9 +42,10 @@ func main() {
 		return
 	}
 
+	http.HandleFunc("/api/data", handler)
+
 	fs := http.FileServer(http.Dir(*staticDir))
-	http.HandleFunc("/api", handler)
 	http.Handle("/", fs)
 	// http.HandleFunc("/", handler)
-	http.ListenAndServe(":10086", nil)
+	http.ListenAndServe(":"+strconv.FormatUint(uint64(*serverPort), 10), nil)
 }

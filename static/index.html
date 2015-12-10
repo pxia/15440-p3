@@ -1,22 +1,67 @@
 <!DOCTYPE html>
+<html lang="en">
 <head>
+    <link rel="stylesheet" href="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css">
     <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+    <script src="http://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js"></script>
 </head>
-<body>
-    <input type="button" id="bu" value="go">
 
-    <table style="width:100%">
+<body>
+    <input type="button" id="bu1" value="go">
+    <input type="button" id="bu2" value="go go">
+
+
+    <table style="width:80%">
         <tr>
-            <td class="row0 col0">Jill</td>
-            <td class="row0 col1">Smith</td>
-            <td class="row0 col2">50</td>
+            <td class="row0 col0"> <input type="text" name="0,0"> </td>
+            <td class="row0 col1"> <input type="text" name="0,1"> </td>
+            <td class="row0 col2"> <input type="text" name="0,2"> </td>
         </tr>
         <tr>
-            <td class="row1 col0">Eve</td>
-            <td class="row1 col1">Jackson</td>
-            <td class="row1 col2">94</td>
+            <td class="row1 col0"> <input type="text" name="1,0"> </td>
+            <td class="row1 col1"> <input type="text" name="1,1"> </td>
+            <td class="row1 col2"> <input type="text" name="1,2"> </td>
         </tr>
     </table
     >
+
+    <br>
+    <br>
+
+
+    <div class="container">
+      <h2>Grid</h2>
+      <table class="table table-bordered">
+
+        <thead>
+          <tr>
+            <th>Col 0</th>
+            <th>Col 1</th>
+            <th>Col 2</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          <tr class="row0">
+            <td> <input class="form-control ginput" grow="0" gcol="0" type="text"> </td>
+            <td> <input class="form-control ginput" grow="0" gcol="1" type="text"> </td>
+            <td> <input class="form-control ginput" grow="0" gcol="2" type="text"> </td>
+          </tr>
+          <tr class="row1">
+            <td> <input class="form-control ginput" grow="1" gcol="0" type="text"> </td>
+            <td> <input class="form-control ginput" grow="1" gcol="1" type="text"> </td>
+            <td> <input class="form-control ginput" grow="1" gcol="2" type="text"> </td>
+          </tr>
+          <tr class="row2">
+            <td> <input class="form-control ginput" grow="2" gcol="0" type="text"> </td>
+            <td> <input class="form-control ginput" grow="2" gcol="1" type="text"> </td>
+            <td> <input class="form-control ginput" grow="2" gcol="2" type="text"> </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+
+
     <script src="/controller.js"></script>
 </body>
