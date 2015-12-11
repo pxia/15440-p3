@@ -2,6 +2,47 @@
 
     var load = $(document).on("pageload", update())
 
+
+    $(document).ready(function(){
+      var r_ct=1;
+      var c_ct=1;
+      $("#add_row").click(function(){
+        $('#tab_logic').append("<tr class='dt-row' id='dt-row"+r_ct+"' r='"+r_ct+"'><td class='dt-col0'><input class='form-control' r='"+r_ct+"' c='0' type='text'></td></tr>");
+
+      // $('#tab_logic').append('<tr class="dt-row" id="dt-row'+(r_ct+1)+'" r="'+(r_ct+1)+'"></tr>');
+      r_ct++; 
+     });
+     $("#delete_row").click(function(){
+         if(r_ct>1){
+         $("#dt-row"+(r_ct-1)).remove();
+         r_ct--;
+         }
+     });
+
+     $("#add_col").click(function(){
+        for (i=0;i<r_ct;i++){
+            $("#dt-row"+i).append("<td class='dt-col"+c_ct+"'><input class='form-control' r='"+$("#dt-row"+i).attr("r")+"' c='"+c_ct+"' type='text'></td>")
+        }
+        // $(".dt_row").each(function(){
+        //     var row = $(this)
+        //     row.append("<td><input class='form-control dt-col' id='dt-col"
+        //         +c_ct+"' r='"+row.attr("r")+"' c='"+c_ct+"' type='text'></td>")
+        // })
+        c_ct++;
+     })
+
+     $("#delete_col").click(function(){
+        if(c_ct>1){
+            $(".dt-col"+(c_ct-1)).each(function(){
+                $(".dt-col"+(c_ct-1)).remove()
+            })
+
+            c_ct--
+        }
+     })
+
+    });
+
     $("#bu1").click(function(event) {
 
         $.get('/api/data', function(data) {
