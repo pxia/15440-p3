@@ -9,6 +9,10 @@
       $("#add_row").click(function(){
         $('#tab_logic').append("<tr class='dt-row' id='dt-row"+r_ct+"' r='"+r_ct+"'><td class='dt-col0'><input class='form-control' r='"+r_ct+"' c='0' type='text'></td></tr>");
 
+        for (c=1; c<c_ct;c++){
+            $("#dt-row"+r_ct).append("<td class='dt-col"+c+"'><input class='form-control' r='"+r_ct+"' c='"+c+"' type='text'></td></tr>")
+        }
+
       // $('#tab_logic').append('<tr class="dt-row" id="dt-row'+(r_ct+1)+'" r="'+(r_ct+1)+'"></tr>');
       r_ct++; 
      });
