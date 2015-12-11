@@ -59,6 +59,7 @@ func cellchangeHandle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.ParseForm()
+	go doChange(r.Form)
 	// fmt.Println(r.Form)
 	// fmt.Println(r.PostForm)
 }
@@ -85,6 +86,49 @@ func doUpdate() {
 		}
 		<-c
 	}
+}
+
+func doChange(form map[string][]string) {
+	change := cellChangeReq{}
+
+	if row, err := strconv.Atoi(form["Row"][0]); err != nil {
+		return
+	} else {
+		change.Row = row
+	}
+
+	if col, err := strconv.Atoi(form["Col"][0]); err != nil {
+		return
+	} else {
+		change.Col = col
+	}
+
+	change.Value = form["Value"][0]
+	gridLock.Lock()
+	grid.Data[change.Row][change.Col] = change.Value
+	gridLock.Unlock()
+
+	nargs := paxosrpc.ProposalNumberArgs{
+		Key: fmt.Sprintf("%d,%d", change.Row, change.Col),
+	}
+	nreply := paxosrpc.ProposalNumberReply{}
+	if err := paxosNode.GetNextProposalNumber(&nargs, &nreply); err != nil {
+		return
+	}
+
+	pargs := paxosrpc.ProposeArgs{
+		N:   nreply.N,
+		Key: nargs.Key,
+		V:   change.Value,
+	}
+	preply := paxosrpc.ProposeReply{}
+	if err := paxosNode.Propose(&pargs, &preply); err != nil {
+		return
+	}
+
+	gridLock.Lock()
+	grid.Data[change.Row][change.Col] = preply.V.(string)
+	gridLock.Unlock()
 }
 
 func main() {
