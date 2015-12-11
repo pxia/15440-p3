@@ -196,6 +196,10 @@ func (pn *paxosNode) GetNextProposalNumber(args *paxosrpc.ProposalNumberArgs, re
 
 func (pn *paxosNode) Propose(args *paxosrpc.ProposeArgs, reply *paxosrpc.ProposeReply) error {
 	pn.commitingValsLock.Lock()
+	if _, ok := pn.commitingVals[args.Key]; ok {
+		pn.commitingValsLock.Unlock()
+		return errors.New("proposal of this key is in progress")
+	}
 	pn.commitingVals[args.Key] = make(chan interface{}, 1)
 	pn.commitingValsLock.Unlock()
 
