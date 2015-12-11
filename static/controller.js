@@ -62,6 +62,9 @@
     })
 
     var timer = setInterval(update, 2000)
+    window.gg = {}
+    window.gg.oldVal = ""
+    window.gg.focusUpdateVal = ""
 
     function update() {
         $.get('/api/data', function(data) {
@@ -71,6 +74,8 @@
                 var cell = $(this)
                 if (!cell.is(":focus")) {
                     cell.val(cellInput[cell.attr("grow")][cell.attr("gcol")])
+                } else {
+                    window.gg.focusUpdateVal = cellInput[cell.attr("grow")][cell.attr("gcol")]
                 }
             })
         })
@@ -85,22 +90,24 @@
         };
     }
 
-    window.gg = {}
-    window.gg.oldVal = ""
 
     $(".ginput").each(function() {
         var cell = $(this)
 
         cell.focus(function(event) {
             window.gg.oldVal = cell.val()
+            window.gg.focusUpdateVal = cell.val()
             console.log(String.format("focus on row:{0},col:{1}", cell.attr("grow"), cell.attr("gcol")));
         });
 
         cell.blur(function(event) {
             if (window.gg.oldVal === cell.val()) {
                 console.log("unchanged")
+                cell.val(window.gg.focusUpdateVal)
+
             } else {
                 console.log("changed")
+                $.post("/api/cellchange", {"Row": cell.attr("grow"), "Col": cell.attr("gcol"), "Value": cell.val(),})
             }
             console.log(String.format("blur on row:{0},col:{1}", cell.attr("grow"), cell.attr("gcol")));
         })
