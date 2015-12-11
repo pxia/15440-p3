@@ -20,4 +20,4 @@ if [ $? -ne 0 ]; then
    exit $?
 fi
 
-$GOPATH/bin/gogrid -static $GOPATH/static
+$GOPATH/bin/gogrid -static $GOPATH/static -port 10086 -srvid 0
