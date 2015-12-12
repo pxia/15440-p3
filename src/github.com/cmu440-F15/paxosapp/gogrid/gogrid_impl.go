@@ -28,12 +28,14 @@ var (
 	srvId     = flag.Int("srvid", -1, "srvId")
 	paxosNode paxos.PaxosNode
 	grid      = gridData{
-		Rows: 3,
-		Cols: 3,
+		Rows: 5,
+		Cols: 4,
 		Data: [][]string{
-			[]string{"a", "b", "c"},
-			[]string{"d", "e", "f"},
-			[]string{"f", "g", "h"},
+			[]string{"We", "love", "15440", ""},
+			[]string{"", "", "", ""},
+			[]string{"", "", "", ""},
+			[]string{"", "", "", ""},
+			[]string{"", "", "", ""},
 		},
 	}
 	gridLock = &sync.RWMutex{}
