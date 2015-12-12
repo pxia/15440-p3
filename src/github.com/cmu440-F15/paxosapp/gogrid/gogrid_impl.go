@@ -24,7 +24,7 @@ var (
 	staticDir  = flag.String("static", "", "directory to static files")
 	serverPort = flag.Uint("port", 10086, "port to to access the web app")
 	// paxoPort   = flag.Uint("paxoport", 10087, "port to communicate with other nodes")
-	paxoNodes = flag.String("paxonodes", "peterxia.com:10087,peterxia.com:10089,ytchen.com:10087", "hostports (containing self) seperated by commas")
+	paxoNodes = flag.String("paxosnodes", "peterxia.com:10087,peterxia.com:10089,ytchen.com:10087", "hostports (containing self) seperated by commas")
 	srvId     = flag.Int("srvid", -1, "srvId")
 	paxosNode paxos.PaxosNode
 	grid      = gridData{
@@ -62,8 +62,6 @@ func cellchangeHandle(w http.ResponseWriter, r *http.Request) {
 	}
 	r.ParseForm()
 	go doChange(r.Form)
-	// fmt.Println(r.Form)
-	// fmt.Println(r.PostForm)
 }
 
 func doUpdate() {
