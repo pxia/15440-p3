@@ -24,7 +24,7 @@ var (
 	staticDir  = flag.String("static", "", "directory to static files")
 	serverPort = flag.Uint("port", 10086, "port to to access the web app")
 	// paxoPort   = flag.Uint("paxoport", 10087, "port to communicate with other nodes")
-	paxoNodes = flag.String("paxonodes", "peterxia.com:10087,peterxia.com:10089", "hostports (containing self) seperated by commas")
+	paxoNodes = flag.String("paxonodes", "peterxia.com:10087,peterxia.com:10089,ytchen:10087", "hostports (containing self) seperated by commas")
 	srvId     = flag.Int("srvid", -1, "srvId")
 	paxosNode paxos.PaxosNode
 	grid      = gridData{
@@ -149,16 +149,17 @@ func main() {
 		hostports[i] = hp
 	}
 
-	// paxosnode, err := paxos.NewPaxosNode(hostports[*srvId], hostports, len(hostports), *srvId, 60, false)
-	// if err != nil {
-	// 	fmt.Println(err)
-	// 	return
-	// }
-	// paxosNode = paxosnode
+	paxosnode, err := paxos.NewPaxosNode(hostports[*srvId], hostports, len(hostports), *srvId, 60, false)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	paxosNode = paxosnode
 
 	http.HandleFunc("/api/data", handler)
 	http.HandleFunc("/api/cellchange", cellchangeHandle)
 	http.HandleFunc("/api/test", testHandler)
+	go doUpdate()
 
 	fs := http.FileServer(http.Dir(*staticDir))
 	http.Handle("/", fs)
